@@ -24,7 +24,6 @@
     resident: "住戶已用專用垃圾袋裝好",
     collector: "需要代收者準備專用垃圾袋"
   };
-  const storageKey = "shunshou-demo-v1";
   const modal = document.querySelector("#modal");
   const personaSelect = document.querySelector("#persona");
   const list = document.querySelector("#case-list");
@@ -33,7 +32,11 @@
   const toast = document.querySelector("#toast");
   const money = new Intl.NumberFormat("zh-TW");
   const defaultGuide = document.querySelector("#guide-steps").innerHTML;
-  let state = loadState();
+  const sessionStatus = document.querySelector("#session-status");
+  let session = new URLSearchParams(location.hash.slice(1)).get("demo");
+  let revision;
+  let busy = false;
+  const state = { persona: "resident", jobs: [] };
   let filter = "all";
   let modalOrigin;
   let toastTimer;
@@ -53,67 +56,99 @@
     return String(value ?? "").replace(/[&<>"']/g, (character) => entities[character]);
   }
 
+  const taipeiDate = new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Taipei" });
+
   function dateKey(offset = 0) {
-    const date = new Date();
-    date.setDate(date.getDate() + offset);
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    return `${date.getFullYear()}-${month}-${day}`;
+    return taipeiDate.format(new Date(Date.now() + offset * 86400000));
   }
 
-  function seedState() {
-    return {
-      persona: "resident",
-      jobs: [
-        {
-          id: "sample-1", city: "臺北市", district: "松山區", date: dateKey(1),
-          start: "19:00", end: "20:00", bags: 2, bagSupply: "collector", floor: "3 樓", elevator: "無電梯",
-          address: "示範巷 12 號 3 樓", note: "垃圾放在住戶門旁，綁好的兩袋。",
-          contact: "demo-resident", status: "open",
-          offers: [
-            { id: "sample-offer-1", collector: "lin", amount: 90, note: "步行順路，兩袋可一次帶走。", contact: collectors.lin, revision: 1 },
-            { id: "sample-offer-2", collector: "chen", amount: 120, note: "需爬三樓，可配合 19:30 左右取件。", contact: collectors.chen, revision: 1 }
-          ]
-        },
-        {
-          id: "sample-2", city: "臺北市", district: "大安區", date: dateKey(2),
-          start: "18:30", end: "19:30", bags: 1, bagSupply: "resident", floor: "1 樓", elevator: "一樓取件",
-          address: "示範路 8 號 1 樓", note: "放在入口內側的自家門邊。",
-          contact: "demo-resident", status: "booked", offers: [],
-          accepted: { collector: "lin", amount: 70, note: "18:45 左右到。", contact: collectors.lin }
-        },
-        {
-          id: "sample-3", city: "臺北市", district: "中山區", date: dateKey(-1),
-          start: "19:30", end: "20:00", bags: 2, bagSupply: "resident", floor: "2 樓", elevator: "有電梯",
-          address: "示範街 21 號 2 樓", note: "兩袋放在門旁。",
-          contact: "demo-resident", status: "done", offers: [],
-          accepted: { collector: "chen", amount: 85, note: "", contact: collectors.chen }
-        }
-      ]
-    };
-  }
-
-  function loadState() {
-    // shortcut: the classroom demo stores shared sample data in one browser, use a server for actual accounts.
+  async function api(input, role = state.persona, token = session) {
+    const headers = token ? { Authorization: "Bearer " + token } : {};
+    if (input) headers["Content-Type"] = "application/json";
+    let response;
     try {
-      const saved = JSON.parse(localStorage.getItem(storageKey));
-      if (saved && Object.hasOwn(people, saved.persona) && Array.isArray(saved.jobs)) return saved;
+      response = await fetch("/api/demo?role=" + role, {
+        method: input ? "POST" : "GET", headers,
+        body: input ? JSON.stringify({ ...input, revision, role }) : undefined,
+      });
     } catch {
-      document.querySelector(".footer p").textContent = "trash camal｜此瀏覽器的示範資料保留至頁面關閉";
+      throw new Error("無法連線，請檢查網路後再試。");
     }
-    return seedState();
+    const result = await response.json().catch(() => null);
+    if (!response.ok || !result) {
+      throw Object.assign(new Error(result?.error || "目前無法讀取示範資料。"), { status: response.status });
+    }
+    return result;
   }
 
-  function saveState() {
+  function showSession(result, role) {
+    revision = result.revision;
+    state.persona = role;
+    state.jobs = result.jobs;
+    sessionStatus.textContent = "示範連結可跨裝置使用，有效 7 天。請只填寫虛構資料。";
+    render();
+  }
+
+  function setBusy(value) {
+    busy = value;
+    personaSelect.disabled = value || revision === undefined;
+    list.setAttribute("aria-busy", String(value));
+  }
+
+  async function refresh(role = state.persona, startNew = false) {
+    if (busy) return;
+    setBusy(true);
     try {
-      localStorage.setItem(storageKey, JSON.stringify(state));
-    } catch {
-      document.querySelector(".footer p").textContent = "trash camal｜此瀏覽器的示範資料保留至頁面關閉";
+      if (startNew || !session) {
+        const result = await api({ action: "create" }, "resident", null);
+        session = result.id;
+        history.replaceState(null, "", location.pathname + location.search + "#demo=" + session);
+        filter = "all";
+        if (modal.open) modal.close();
+        showSession(result, "resident");
+      } else {
+        showSession(await api(undefined, role), role);
+      }
+    } catch (error) {
+      personaSelect.value = state.persona;
+      if (error.status === 401 || error.status === 404) {
+        revision = undefined;
+        state.jobs = [];
+        render();
+      }
+      sessionStatus.textContent = error.message;
+      notify(error.message);
+    } finally {
+      setBusy(false);
     }
   }
 
-  function id() {
-    return crypto.randomUUID?.() ?? Date.now().toString(36) + Math.random().toString(36).slice(2);
+  async function save(action, message, jobId, fields, offer, form) {
+    if (busy || revision === undefined) return;
+    setBusy(true);
+    const submitter = form?.querySelector("button[type=submit]");
+    if (submitter) submitter.disabled = true;
+    try {
+      const result = await api({ action, jobId, fields, ...offer });
+      if (action === "reset" || action === "new") filter = "all";
+      showSession(result, state.persona);
+      const job = state.jobs.find((item) => item.id === result.jobId);
+      if (job) showDetail(job);
+      else if (modal.open) modal.close();
+      notify(message);
+    } catch (error) {
+      if (error.status === 409 || error.status === 404) {
+        if (modal.open) modal.close();
+        setBusy(false);
+        await refresh();
+      } else if (form) {
+        formError(form, error.message);
+      }
+      notify(error.message);
+    } finally {
+      if (submitter) submitter.disabled = false;
+      setBusy(false);
+    }
   }
 
   function price(amount) {
@@ -169,7 +204,7 @@
   }
 
   function expired(job) {
-    return Date.now() >= new Date(`${job.date}T${job.end}`).getTime();
+    return Date.now() >= new Date(`${job.date}T${job.end}:00+08:00`).getTime();
   }
 
   function stage(job) {
@@ -266,8 +301,12 @@
       ? "查看報價、確認代收者，掌握每一單的進度。"
       : "查看取件時間和搬運條件，為合適的案件報價。";
     document.querySelector("#new-case").hidden = !resident;
+    document.querySelector("[data-action=reset]").hidden = !resident || revision === undefined;
+    document.querySelector("[data-action=share]").hidden = revision === undefined;
     const heroAction = document.querySelector("#hero-action");
     heroAction.dataset.action = resident ? "new" : "browse";
+    heroAction.disabled = revision === undefined;
+    document.querySelector("#new-case").disabled = revision === undefined;
     heroAction.innerHTML = resident ? `${icon("plus")}發布代收需求` : `${icon("pin")}查看附近案件`;
     document.querySelector("#guide-steps").innerHTML = resident ? defaultGuide : `
       <li><span class="step">1</span><div><h3>查看案件</h3><p>確認區域、取件時段和搬運條件。</p></div></li>
@@ -449,7 +488,7 @@
           <label class="full">報價說明（選填）<textarea name="note" maxlength="300" placeholder="例如：無電梯，需搬運兩袋。">${escapeHtml(previous?.note)}</textarea></label>
         </div>
         ${formButtons(previous ? "儲存報價" : "送出報價", actionButton("返回", "detail", job.id))}
-      </form>`, `${pickupAreaLabel(job)}｜${job.bags} 袋｜${job.floor}・${job.elevator}`);
+      </form>`, "請使用虛構的聯絡方式。");
   }
 
   function confirm(title, body, label, data, job, danger = false) {
@@ -467,74 +506,13 @@
     error.hidden = false;
   }
 
-  function commit(message, job) {
-    saveState();
-    render();
-    if (hasJobAccess(job)) {
-      showDetail(job);
-    } else if (modal.open) {
-      modal.close();
-    }
-    notify(message);
-  }
-
-  function submitCase(form, fields) {
-    const pickupStart = new Date(`${fields.date}T${fields.start}`).getTime();
-    const postalCode = postalCodeFor(fields.city, fields.district);
-    const bags = Number(fields.bags);
-    if (!postalCode) {
-      formError(form, "請選擇有效的取件縣市和行政區。");
-      return;
-    }
-    if (asksAboutBagSupply(fields.city) && !Object.hasOwn(bagSupplyLabels, fields.bagSupply)) {
-      formError(form, "請選擇由誰準備專用垃圾袋。");
-      return;
-    }
-    if (!fields.floor || !fields.address || !Number.isInteger(bags) || bags < 1 || bags > 30) {
-      formError(form, "請填寫搬運樓層、確切取件地點和 1 至 30 袋的數量。");
-      return;
-    }
-    if (!Number.isFinite(pickupStart) || pickupStart <= Date.now()) {
-      formError(form, "請選擇未來的取件時間。");
-      return;
-    }
-    if (fields.start >= fields.end) {
-      formError(form, "結束時間須晚於開始時間。");
-      return;
-    }
-
-    const job = { ...fields, id: id(), bags, postalCode, status: "open", offers: [] };
-    state.jobs.unshift(job);
-    filter = "all";
-    commit("已發布代收需求", job);
-  }
-
   document.addEventListener("submit", (event) => {
     const form = event.target;
     if (!form.dataset.form) return;
     event.preventDefault();
-    const fields = Object.fromEntries([...new FormData(form)].map(([key, value]) => [key, value.trim()]));
-    if (form.dataset.form === "new" && isResident()) {
-      submitCase(form, fields);
-      return;
-    }
-
-    const job = state.jobs.find((item) => item.id === form.dataset.id);
-    if (form.dataset.form === "offer" && !isResident() && job && stage(job) === "open") {
-      const previous = job.offers.find((offer) => offer.collector === state.persona);
-      const offer = { ...fields, id: previous?.id ?? id(), amount: Number(fields.amount), collector: state.persona, revision: (previous?.revision ?? 0) + 1 };
-      job.offers = [...job.offers.filter((item) => item.collector !== state.persona), offer];
-      commit(previous ? "已更新報價" : "已送出報價", job);
-    } else if (form.dataset.form === "issue" && job && assigned(job) && ["booked", "picked"].includes(job.status)) {
-      if (!fields.reason) {
-        formError(form, "請填寫遇到的問題。");
-        return;
-      }
-      job.issue = fields.reason;
-      commit("已回報問題", job);
-    } else {
-      formError(form, "案件狀態已更新，請返回案件列表重新查看。");
-    }
+    const fields = Object.fromEntries(new FormData(form));
+    const messages = { new: "已發布代收需求", offer: "已儲存報價", issue: "已回報問題" };
+    save(form.dataset.form, messages[form.dataset.form], form.dataset.id, fields, undefined, form);
   });
 
   const simpleActions = {
@@ -547,13 +525,19 @@
       addIcons(list);
       filters.querySelector(`[data-key="${filter}"]`).focus({ preventScroll: true });
     },
+    refresh() { refresh(); },
+    "new-demo"() { refresh("resident", true); },
+    share() {
+      if (revision !== undefined) {
+        showModal("示範連結", '<p>拿到連結的人都能操作這組虛構案件。</p><label>複製網址<input readonly value="' + escapeHtml(location.origin + location.pathname + "#demo=" + session) + '" data-initial-focus></label>');
+        modal.querySelector("input").select();
+      }
+    },
     reset() {
-      confirm("重設示範資料", "這會清除你在此瀏覽器新增的案件和報價，並還原預設範例。", "重設資料", { action: "reset-confirm" }, null, true);
+      confirm("重設示範資料", "這會清除這組示範新增的案件和報價。同一連結的其他裝置也會看到重設結果。", "重設資料", { action: "reset-confirm" }, null, true);
     },
     "reset-confirm"() {
-      state = seedState();
-      filter = "all";
-      commit("已還原示範資料");
+      save("reset", "已還原示範資料");
     }
   };
 
@@ -562,8 +546,7 @@
     offer(job) { if (!isResident() && stage(job) === "open") showOffer(job); },
     withdraw(job) {
       if (isResident() || stage(job) !== "open") return;
-      job.offers = job.offers.filter((offer) => offer.collector !== state.persona);
-      commit("已撤回報價", job);
+      save("withdraw", "已撤回報價", job.id);
     },
     choose(job, button) {
       if (!isResident() || stage(job) !== "open") return;
@@ -577,10 +560,7 @@
       if (!isResident() || stage(job) !== "open") return staleOffer(job);
       const offer = currentOffer(job, button);
       if (!offer) return staleOffer(job);
-      job.accepted = { ...offer };
-      job.status = "booked";
-      job.offers = [];
-      commit("已確認代收者", job);
+      save("accept", "已確認代收者", job.id, undefined, { offerId: offer.id, offerRevision: offer.revision });
     },
     cancel(job) {
       if (!canCancel(job)) return;
@@ -588,21 +568,15 @@
     },
     "cancel-confirm"(job) {
       if (!canCancel(job)) return;
-      job.status = "cancelled";
-      job.issue = "";
-      commit("案件已取消", job);
+      save("cancel-confirm", "案件已取消", job.id);
     },
     picked(job) {
       if (!assigned(job) || job.status !== "booked") return;
-      job.status = "picked";
-      job.issue = "";
-      commit("已更新為已取件", job);
+      save("picked", "已更新為已取件", job.id);
     },
     done(job) {
       if (!assigned(job) || job.status !== "picked") return;
-      job.status = "done";
-      job.issue = "";
-      commit("代收已完成", job);
+      save("done", "代收已完成", job.id);
     },
     issue(job) {
       if (!assigned(job) || !["booked", "picked"].includes(job.status)) return;
@@ -633,7 +607,7 @@
 
   document.addEventListener("click", (event) => {
     const button = event.target.closest("button[data-action]");
-    if (!button) return;
+    if (!button || (busy && button.dataset.action !== "close")) return;
     const action = button.dataset.action;
     if (Object.hasOwn(simpleActions, action)) {
       simpleActions[action](button);
@@ -644,10 +618,8 @@
   });
 
   personaSelect.addEventListener("change", () => {
-    state.persona = personaSelect.value;
     filter = "all";
-    saveState();
-    render();
+    refresh(personaSelect.value);
   });
 
   modal.addEventListener("close", () => {
@@ -655,13 +627,18 @@
     else casesTitle.focus({ preventScroll: true });
   });
 
-  window.addEventListener("storage", (event) => {
-    if (event.key !== storageKey) return;
-    const currentPersona = state.persona;
-    state = loadState();
-    state.persona = currentPersona;
-    render();
+  window.addEventListener("focus", () => {
+    if (!modal.open && revision !== undefined) refresh();
+  });
+  window.addEventListener("hashchange", () => {
+    const linkedSession = new URLSearchParams(location.hash.slice(1)).get("demo");
+    if (linkedSession && linkedSession !== session) {
+      location.reload();
+    } else if (!linkedSession && session) {
+      history.replaceState(null, "", "#demo=" + session);
+    }
   });
 
   render();
+  refresh();
 })();

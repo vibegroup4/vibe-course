@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
   <meta name="theme-color" content="#f4f0e7">
   <meta name="description" content="trash camal 垃圾駱駝的垃圾代收媒合示範">
   <title>trash camal｜垃圾駱駝</title>
@@ -82,8 +83,13 @@
   </main>
 
   <footer class="shell footer">
-    <p><b lang="en">trash camal</b> <span>｜</span> 示範資料保存在此瀏覽器</p>
-    <button class="text-button" type="button" data-action="reset"><span data-icon="refresh"></span>重設示範資料</button>
+    <p id="session-status" role="status">正在連線到示範資料庫…</p>
+    <div class="demo-actions">
+      <button class="text-button" type="button" data-action="refresh">更新資料</button>
+      <button class="text-button" type="button" data-action="share" hidden>分享示範連結</button>
+      <button class="text-button" type="button" data-action="new-demo">開始新示範</button>
+      <button class="text-button" type="button" data-action="reset" hidden>重設示範資料</button>
+    </div>
   </footer>
   <dialog id="modal" aria-labelledby="modal-title"></dialog>
   <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
