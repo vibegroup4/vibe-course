@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4f0e7">
+  <meta name="description" content="trash camal 垃圾駱駝的垃圾代收媒合示範">
+  <title>trash camal｜垃圾駱駝</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="postal-codes.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#cases">跳到案件</a>
+  <header class="topbar" id="top">
+    <div class="shell topbar-inner">
+      <a class="brand" href="#top" aria-label="trash camal 垃圾駱駝首頁">
+        <span class="brand-mark" data-icon="brand"></span>
+        <span><span class="brand-name" lang="en">trash camal</span><small>垃圾駱駝</small></span>
+      </a>
+      <nav class="primary-nav" aria-label="主要導覽">
+        <a href="#cases">案件總覽</a>
+        <a href="#guide">操作指南</a>
+      </nav>
+      <div class="view-switch">
+        <span class="demo-label">課堂示範</span>
+        <label class="persona-label">
+          <span data-icon="user"></span>
+          <span class="sr-only">切換示範身分</span>
+          <select id="persona">
+            <option value="resident">住戶視角</option>
+            <option value="lin">代收者（林小安）</option>
+            <option value="chen">代收者（陳宇晴）</option>
+          </select>
+          <span class="chevron" data-icon="chevron"></span>
+        </label>
+      </div>
+    </div>
+  </header>
+
+  <main class="shell">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-content">
+        <h1 id="hero-title">約好時間，<br>垃圾有人收。</h1>
+        <p id="hero-description">指定取件時間與地點，等附近的代收者報價。</p>
+        <div class="hero-actions">
+          <button class="button button-primary hero-button" id="hero-action" type="button" data-action="new"><span data-icon="plus"></span>發布代收需求</button>
+          <a class="hero-link" href="#guide">了解代收流程</a>
+        </div>
+      </div>
+      <div class="hero-photo">
+        <img src="assets/pickup-doorstep.webp" alt="" width="1200" height="800" fetchpriority="high">
+      </div>
+    </section>
+
+    <div class="workspace">
+      <section id="cases" aria-labelledby="cases-title">
+        <div class="section-head">
+          <div>
+            <h2 id="cases-title" tabindex="-1">我的代收案件</h2>
+            <p id="cases-description">查看報價、確認代收者，掌握每一單的進度。</p>
+          </div>
+          <button class="button button-primary" id="new-case" type="button" data-action="new"><span data-icon="plus"></span>發布需求</button>
+        </div>
+        <div class="filters" id="filters" role="group" aria-label="篩選案件"></div>
+        <div class="case-list" id="case-list"></div>
+        <noscript><p>啟用 JavaScript 後即可操作這個示範網站。</p></noscript>
+      </section>
+      <aside class="guide" id="guide" aria-labelledby="guide-title">
+        <div class="guide-heading">
+          <span class="guide-icon" data-icon="route"></span>
+          <h2 id="guide-title">代收怎麼進行？</h2>
+        </div>
+        <ol id="guide-steps">
+          <li><span class="step">1</span><div><h3>發布需求</h3><p>填寫取件時段、地點與搬運條件。</p></div></li>
+          <li><span class="step">2</span><div><h3>選擇報價</h3><p>比較代收者提出的金額與說明。</p></div></li>
+          <li><span class="step">3</span><div><h3>定點取件</h3><p>代收者依約取件，倒完後更新進度。</p></div></li>
+        </ol>
+        <div class="guide-note"><span data-icon="lock"></span><p>成交後才會向接單者顯示確切取件地點。</p></div>
+      </aside>
+    </div>
+  </main>
+
+  <footer class="shell footer">
+    <p><b lang="en">trash camal</b> <span>｜</span> 示範資料保存在此瀏覽器</p>
+    <button class="text-button" type="button" data-action="reset"><span data-icon="refresh"></span>重設示範資料</button>
+  </footer>
+  <dialog id="modal" aria-labelledby="modal-title"></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+</body>
+</html>
