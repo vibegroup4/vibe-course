@@ -21,6 +21,7 @@
       </a>
       <nav class="primary-nav" aria-label="主要導覽">
         <a href="#cases">案件總覽</a>
+        <a href="#statistics" id="statistics-link" hidden>接單統計</a>
         <a href="#guide">操作指南</a>
       </nav>
       <div class="view-switch">
@@ -61,8 +62,46 @@
             <h2 id="cases-title" tabindex="-1">我的代收案件</h2>
             <p id="cases-description">查看報價、確認代收者，掌握每一單的進度。</p>
           </div>
-          <button class="button button-primary" id="new-case" type="button" data-action="new"><span data-icon="plus"></span>發布需求</button>
+          <div class="case-tools"><button class="button button-primary" id="new-case" type="button" data-action="new"><span data-icon="plus"></span>發布需求</button><a class="button button-quiet" id="calendar-link" href="#calendar" hidden>接單行事曆</a></div>
         </div>
+        <section class="statistics" id="statistics" aria-labelledby="statistics-title" hidden>
+          <div class="statistics-head">
+            <div>
+              <h3 id="statistics-title">接單統計</h3>
+              <p id="statistics-range"></p>
+            </div>
+            <label><span class="sr-only">統計區間</span>
+              <select id="statistics-period">
+                <option value="week">本週</option>
+                <option value="month">本月</option>
+                <option value="quarter">本季</option>
+                <option value="year">本年</option>
+              </select>
+            </label>
+          </div>
+          <dl class="statistics-values" id="statistics-values" aria-live="polite"></dl>
+          <p>以臺灣日期計算，舊案缺時間紀錄時採原定取件日。金額為成交紀錄。</p>
+        </section>
+        <section class="calendar" id="calendar" aria-labelledby="calendar-title" hidden>
+          <h3 id="calendar-title">接單行事曆</h3>
+          <fieldset class="calendar-filters" id="calendar-filters">
+            <legend>顯示案件</legend>
+            <label class="calendar-confirmed"><input type="checkbox" value="confirmed" checked>已確認案件</label>
+            <label class="calendar-done"><input type="checkbox" value="done" checked>已完成案件</label>
+            <label class="calendar-abandoned"><input type="checkbox" value="abandoned" checked>棄單案件</label>
+          </fieldset>
+          <div class="calendar-toolbar">
+            <h4 id="calendar-month" aria-live="polite"></h4>
+            <div class="calendar-controls">
+              <button class="button button-quiet" type="button" data-action="calendar-month" data-offset="-1">上個月</button>
+              <button class="button button-quiet" type="button" data-action="calendar-today">本月</button>
+              <button class="button button-quiet" type="button" data-action="calendar-month" data-offset="1">下個月</button>
+            </div>
+          </div>
+          <div class="calendar-weekdays" aria-hidden="true"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
+          <div class="calendar-days" id="calendar-days" aria-labelledby="calendar-month"></div>
+          <p class="calendar-empty" id="calendar-empty" role="status" hidden></p>
+        </section>
         <div class="filters" id="filters" role="group" aria-label="篩選案件"></div>
         <div class="case-list" id="case-list"></div>
         <noscript><p>啟用 JavaScript 後即可操作這個示範網站。</p></noscript>

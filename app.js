@@ -19,7 +19,7 @@
 
   const people = { resident: "住戶", lin: "林小安", chen: "陳宇晴" };
   const collectors = { lin: "demo-lin", chen: "demo-chen" };
-  const statusNames = { open: "待報價", booked: "已約定", picked: "已取件", done: "已完成", cancelled: "已取消", expired: "已逾期" };
+  const statusNames = { open: "待報價", booked: "已約定", picked: "已取件", done: "已完成", cancelled: "已取消", abandoned: "代收者已棄單", expired: "已逾期" };
   const bagSupplyLabels = {
     resident: "住戶已用專用垃圾袋裝好",
     collector: "需要代收者準備專用垃圾袋"
@@ -28,6 +28,13 @@
   const personaSelect = document.querySelector("#persona");
   const list = document.querySelector("#case-list");
   const filters = document.querySelector("#filters");
+  const statistics = document.querySelector("#statistics");
+  const statisticsPeriod = document.querySelector("#statistics-period");
+  const calendar = document.querySelector("#calendar");
+  const calendarFilters = document.querySelector("#calendar-filters");
+  const calendarLabels = { confirmed: "已確認", done: "已完成", abandoned: "已棄單" };
+  const calendarMonthFormat = new Intl.DateTimeFormat("zh-TW", { year: "numeric", month: "long", timeZone: "UTC" });
+  let calendarMonth;
   const casesTitle = document.querySelector("#cases-title");
   const toast = document.querySelector("#toast");
   const money = new Intl.NumberFormat("zh-TW");
@@ -58,9 +65,19 @@
 
   const taipeiDate = new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Taipei" });
 
-  function dateKey(offset = 0) {
-    return taipeiDate.format(new Date(Date.now() + offset * 86400000));
+  function dateKey(offset = 0, from = Date.now()) {
+    return taipeiDate.format(new Date(Number(from) + offset * 86400000));
   }
+
+  function calendarDate(offset = 0, from) {
+    return new Date(Number(from) + offset * 86400000).toISOString().slice(0, 10);
+  }
+
+  function currentMonth() {
+    return new Date(dateKey().slice(0, 7) + "-01T00:00:00Z");
+  }
+
+  calendarMonth = currentMonth();
 
   async function api(input, role = state.persona, token = session) {
     const headers = token ? { Authorization: "Bearer " + token } : {};
@@ -68,11 +85,11 @@
     let response;
     try {
       response = await fetch("/api/demo?role=" + role, {
-        method: input ? "POST" : "GET", headers,
+        method: input ? "POST" : "GET", headers, signal: AbortSignal.timeout(10000),
         body: input ? JSON.stringify({ ...input, revision, role }) : undefined,
       });
-    } catch {
-      throw new Error("無法連線，請檢查網路後再試。");
+    } catch (error) {
+      throw new Error(error.name === "TimeoutError" ? "連線逾時。先更新資料確認結果，再決定是否重送。" : "無法連線，請檢查網路後再試。");
     }
     const result = await response.json().catch(() => null);
     if (!response.ok || !result) {
@@ -82,6 +99,7 @@
   }
 
   function showSession(result, role) {
+    if (role !== state.persona && modal.open) modal.close();
     revision = result.revision;
     state.persona = role;
     state.jobs = result.jobs;
@@ -138,9 +156,10 @@
       notify(message);
     } catch (error) {
       if (error.status === 409 || error.status === 404) {
-        if (modal.open) modal.close();
+        if (!form && modal.open) modal.close();
         setBusy(false);
         await refresh();
+        if (form?.isConnected) formError(form, error.message + " 已更新案件，表單內容已保留。");
       } else if (form) {
         formError(form, error.message);
       }
@@ -243,13 +262,14 @@
     const sets = {
       all: jobs,
       open: jobs.filter((job) => stage(job) === "open"),
+      quoted: jobs.filter((job) => !isResident() && stage(job) === "open" && job.offers.some((offer) => offer.collector === state.persona)),
       active: jobs.filter((job) => ["booked", "picked"].includes(stage(job))),
       done: jobs.filter((job) => stage(job) === "done"),
-      ended: jobs.filter((job) => ["cancelled", "expired"].includes(stage(job)))
+      ended: jobs.filter((job) => ["cancelled", "abandoned", "expired"].includes(stage(job)))
     };
-    const labels = { all: "全部", open: "待報價", active: "進行中", done: "已完成", ended: "已結束" };
+    const labels = { all: "全部", open: "待報價", quoted: "已報價", active: "進行中", done: "已完成", ended: "已結束" };
     filters.innerHTML = Object.entries(labels)
-      .filter(([key]) => key !== "ended" || sets.ended.length > 0 || filter === "ended")
+      .filter(([key]) => (key !== "quoted" || !isResident()) && (key !== "ended" || sets.ended.length > 0 || filter === "ended"))
       .map(([key, label]) => `
         <button class="filter" type="button" data-action="filter" data-key="${key}" aria-pressed="${filter === key}">
           ${label}<span class="filter-count">${sets[key].length}</span>
@@ -293,9 +313,87 @@
       </article>`;
   }
 
+  function statisticsBounds(period, now = new Date()) {
+    now = new Date(dateKey(0, now) + "T00:00:00Z");
+    const year = now.getUTCFullYear();
+    const month = now.getUTCMonth();
+    if (period === "week") {
+      const monday = now.getUTCDate() - (now.getUTCDay() + 6) % 7;
+      return [new Date(Date.UTC(year, month, monday)), new Date(Date.UTC(year, month, monday + 7))];
+    }
+    const months = { month: 1, quarter: 3, year: 12 }[period];
+    const first = Math.floor(month / months) * months;
+    return [new Date(Date.UTC(year, first, 1)), new Date(Date.UTC(year, first + months, 1))];
+  }
+
+  function renderStatistics() {
+    const [start, end] = statisticsBounds(statisticsPeriod.value);
+    const inPeriod = (time) => Number.isFinite(time) && dateKey(0, time) >= calendarDate(0, start) && dateKey(0, time) < calendarDate(0, end);
+    let bookings = 0;
+    let abandonments = 0;
+    let revenue = 0;
+    for (const job of state.jobs.filter(assigned)) {
+      const pickup = Date.parse(job.date + "T" + job.start + ":00+08:00");
+      if (inPeriod(job.bookedAt ?? pickup)) bookings++;
+      if (inPeriod(job.abandonedAt)) abandonments++;
+      if (job.status === "done" && inPeriod(job.completedAt ?? pickup)) revenue += job.accepted.amount;
+    }
+    document.querySelector("#statistics-range").textContent = `${calendarDate(0, start).replaceAll("-", "/")} ～ ${calendarDate(-1, end).replaceAll("-", "/")}`;
+    document.querySelector("#statistics-values").innerHTML = detail("接單數", money.format(bookings)) + detail("棄單數", money.format(abandonments)) + detail("完成成交金額", price(revenue));
+  }
+
+  function renderCalendar() {
+    const selected = new Set([...calendarFilters.querySelectorAll("input:checked")].map((input) => input.value));
+    const year = calendarMonth.getUTCFullYear();
+    const month = calendarMonth.getUTCMonth();
+    const first = new Date(Date.UTC(year, month, 1));
+    const start = calendarDate(0, first);
+    const end = calendarDate(0, new Date(Date.UTC(year, month + 1, 1)));
+    const today = dateKey();
+    const events = new Map();
+    for (const job of state.jobs) {
+      if (!assigned(job) || job.date < start || job.date >= end) continue;
+      const category = ["booked", "picked"].includes(job.status) ? "confirmed" : job.status;
+      if (!selected.has(category)) continue;
+      if (!events.has(job.date)) events.set(job.date, []);
+      events.get(job.date).push({ job, category });
+    }
+
+    document.querySelector("#calendar-month").textContent = calendarMonthFormat.format(first);
+    const empty = document.querySelector("#calendar-empty");
+    empty.textContent = selected.size ? "本月沒有符合勾選狀態的案件。" : "勾選案件狀態即可顯示。";
+    empty.hidden = events.size > 0;
+    const blanks = (first.getUTCDay() + 6) % 7;
+    const days = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+    const padding = '<div class="calendar-padding" aria-hidden="true"></div>';
+    const cells = Array.from({ length: days }, (_, offset) => {
+      const date = calendarDate(offset, first);
+      const entries = events.get(date) ?? [];
+      entries.sort((a, b) => a.job.start.localeCompare(b.job.start));
+      return `<div class="calendar-day${entries.length ? " has-events" : ""}">
+        <time datetime="${date}"${date === today ? ' aria-current="date"' : ""}>
+          <span class="calendar-day-number">${offset + 1}</span><span class="calendar-date-label">${pickupDateLabel(date)}</span>
+        </time>
+        ${entries.map(({ job, category }) => `<button class="calendar-event calendar-${category}" type="button" data-action="detail" data-id="${escapeHtml(job.id)}"
+          aria-label="${escapeHtml(`${windowLabel(job)} ${caseTitle(job)}，${calendarLabels[category]}，查看詳情`)}">
+          <b>${escapeHtml(job.district)}・${job.bags} 袋</b><span>${escapeHtml(job.start)} ${calendarLabels[category]}</span>
+        </button>`).join("")}
+      </div>`;
+    });
+    document.querySelector("#calendar-days").innerHTML = padding.repeat(blanks) + cells.join("") + padding.repeat((7 - (blanks + days) % 7) % 7);
+  }
+
   function render() {
     const resident = isResident();
     personaSelect.value = state.persona;
+    statistics.hidden = resident || revision === undefined;
+    calendar.hidden = statistics.hidden;
+    document.querySelector("#statistics-link").hidden = statistics.hidden;
+    document.querySelector("#calendar-link").hidden = calendar.hidden;
+    if (!statistics.hidden) {
+      renderStatistics();
+      renderCalendar();
+    }
     casesTitle.textContent = resident ? "我的代收案件" : "附近代收案件";
     document.querySelector("#cases-description").textContent = resident
       ? "查看報價、確認代收者，掌握每一單的進度。"
@@ -416,11 +514,36 @@
     return `<div${full ? ' class="full"' : ""}><dt>${label}</dt><dd>${escapeHtml(value)}</dd></div>`;
   }
 
+  function reviewTarget(job, author = state.persona) {
+    return people[author === "resident" ? job.accepted.collector : "resident"];
+  }
+
+  function canReview(job) {
+    return job?.status === "done" && job.accepted && (isResident() || assigned(job)) && !job.reviews?.[state.persona];
+  }
+
+  function showReview(job) {
+    if (!canReview(job)) return;
+    showModal(`評價${reviewTarget(job)}`, `
+      <form data-form="review" data-id="${job.id}">
+        <div class="form-grid">
+          <label class="full">星等
+            <select name="stars" required data-initial-focus>
+              <option value="">選擇 1 至 5 顆星</option>
+              ${[5, 4, 3, 2, 1].map((stars) => `<option value="${stars}">${"★".repeat(stars)} ${stars} 顆星</option>`).join("")}
+            </select>
+          </label>
+          <label class="full">服務評價（選填）<textarea name="comment" maxlength="300"></textarea></label>
+        </div>
+        ${formButtons("送出評價", actionButton("返回", "detail", job.id))}
+      </form>`, "評價送出後，雙方都可在案件詳情查看。");
+  }
+
   function showDetail(job) {
     if (!hasJobAccess(job)) return;
     const current = stage(job);
     const ownOffer = job.offers.find((offer) => offer.collector === state.persona);
-    const canSeeLocation = isResident() || assigned(job);
+    const canSeeLocation = isResident() || (assigned(job) && current !== "abandoned");
     const agreedContact = isResident() ? job.accepted?.contact : job.contact;
     const bagSupply = bagSupplyLabel(job);
     let quoteSection = "";
@@ -447,8 +570,10 @@
     }
 
     if ((isResident() && current === "open") || ((isResident() || assigned(job)) && current === "booked")) {
-      actions.unshift(actionButton("取消案件", "cancel", job.id, "danger"));
+      actions.unshift(actionButton(isResident() ? "取消案件" : "棄單", "cancel", job.id, "danger"));
     }
+    if (canReview(job)) actions.push(actionButton("評價" + reviewTarget(job), "review", job.id, "primary"));
+    const reviews = Object.entries(job.reviews ?? {});
     if (assigned(job) && ["booked", "picked"].includes(current)) {
       actions.push(actionButton("回報問題", "issue", job.id));
       actions.push(current === "booked"
@@ -467,11 +592,16 @@
         ${job.difficulty ? detail("搬運補充", job.difficulty, true) : ""}
         ${canSeeLocation ? detail("確切取件地點", job.address, true) : ""}
         ${canSeeLocation && job.note ? detail("交接說明", job.note, true) : ""}
-        ${job.accepted && agreedContact ? detail(isResident() ? "代收者聯絡方式" : "住戶聯絡方式", agreedContact, true) : ""}
+        ${canSeeLocation && job.accepted && agreedContact ? detail(isResident() ? "代收者聯絡方式" : "住戶聯絡方式", agreedContact, true) : ""}
       </dl>
-      ${canSeeLocation ? "" : '<p class="notice">住戶選定你的報價後，這裡會顯示確切地點和交接說明。</p>'}
+      ${canSeeLocation || current === "abandoned" ? "" : '<p class="notice">住戶選定你的報價後，這裡會顯示確切地點和交接說明。</p>'}
       ${job.issue ? `<p class="notice problem">問題回報｜${escapeHtml(job.issue)}</p>` : ""}
       ${quoteSection}
+      ${reviews.length ? `<section class="review-list"><h3 class="offer-heading">服務評價</h3>${reviews.map(([author, review]) => `
+        <div class="offer-row"><div><b>${people[author]}給${reviewTarget(job, author)}的評價</b>
+          <p><span class="review-stars" aria-hidden="true">${"★".repeat(review.stars)}${"☆".repeat(5 - review.stars)}</span> ${review.stars}／5 顆星</p>
+          ${review.comment ? `<p>${escapeHtml(review.comment)}</p>` : ""}
+        </div></div>`).join("")}</section>` : ""}
       ${actions.length ? `<div class="modal-actions">${actions.join("")}</div>` : ""}`);
   }
 
@@ -511,7 +641,7 @@
     if (!form.dataset.form) return;
     event.preventDefault();
     const fields = Object.fromEntries(new FormData(form));
-    const messages = { new: "已發布代收需求", offer: "已儲存報價", issue: "已回報問題" };
+    const messages = { new: "已發布代收需求", offer: "已儲存報價", issue: "已回報問題", review: "已送出評價" };
     save(form.dataset.form, messages[form.dataset.form], form.dataset.id, fields, undefined, form);
   });
 
@@ -525,6 +655,11 @@
       addIcons(list);
       filters.querySelector(`[data-key="${filter}"]`).focus({ preventScroll: true });
     },
+    "calendar-month"(button) {
+      calendarMonth = new Date(Date.UTC(calendarMonth.getUTCFullYear(), calendarMonth.getUTCMonth() + Number(button.dataset.offset), 1));
+      renderCalendar();
+    },
+    "calendar-today"() { calendarMonth = currentMonth(); renderCalendar(); },
     refresh() { refresh(); },
     "new-demo"() { refresh("resident", true); },
     share() {
@@ -534,7 +669,7 @@
       }
     },
     reset() {
-      confirm("重設示範資料", "這會清除這組示範新增的案件和報價。同一連結的其他裝置也會看到重設結果。", "重設資料", { action: "reset-confirm" }, null, true);
+      confirm("重設示範資料", "這會清除這組示範新增的案件、報價和評價。同一連結的其他裝置也會看到重設結果。", "重設資料", { action: "reset-confirm" }, null, true);
     },
     "reset-confirm"() {
       save("reset", "已還原示範資料");
@@ -543,6 +678,7 @@
 
   const jobActions = {
     detail(job) { showDetail(job); },
+    review(job) { showReview(job); },
     offer(job) { if (!isResident() && stage(job) === "open") showOffer(job); },
     withdraw(job) {
       if (isResident() || stage(job) !== "open") return;
@@ -564,11 +700,11 @@
     },
     cancel(job) {
       if (!canCancel(job)) return;
-      confirm("取消代收案件", "取消後，這筆案件會留在已結束的紀錄中。", "確認取消", { action: "cancel-confirm" }, job, true);
+      confirm(isResident() ? "取消代收案件" : "確認棄單", isResident() ? "取消後保留案件與成交紀錄。" : "棄單後保留紀錄，交接資訊將隱藏。住戶如有需要可重新發單。", isResident() ? "確認取消" : "確認棄單", { action: "cancel-confirm" }, job, true);
     },
     "cancel-confirm"(job) {
       if (!canCancel(job)) return;
-      save("cancel-confirm", "案件已取消", job.id);
+      save("cancel-confirm", isResident() ? "案件已取消" : "已記錄棄單", job.id);
     },
     picked(job) {
       if (!assigned(job) || job.status !== "booked") return;
@@ -621,6 +757,9 @@
     filter = "all";
     refresh(personaSelect.value);
   });
+
+  statisticsPeriod.addEventListener("change", renderStatistics);
+  calendarFilters.addEventListener("change", renderCalendar);
 
   modal.addEventListener("close", () => {
     if (modalOrigin?.isConnected) modalOrigin.focus({ preventScroll: true });

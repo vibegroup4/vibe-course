@@ -1,17 +1,35 @@
 # 垃圾駱駝
 
-課堂 demo 用來演練住戶發單、代收者報價、選定報價、取件和完成。用同一組示範連結可跨裝置操作，角色仍可在畫面切換。連結建立後 7 天到期，請只填虛構地址及聯絡資料。已有的瀏覽器版資料不會自動上傳。
+垃圾代收媒合課堂專題，整合組員的互評、接單行事曆、統計與棄單紀錄。
+
+- [公開網站](https://trash-camal-vibe-course-4.spiritedmagpie1.chatgpt.site/)
+- [小組 GitHub](https://github.com/vibegroup4/vibe-course)
+- [規格與完成條件](spec.md)
+- [操作及系統流程](docs/流程圖.md)
+- [驗收與彩排](docs/驗收與彩排.md)
+- [組員整合紀錄](docs/組員整合紀錄.md)
+- [最新整合版專題簡報](docs/垃圾駱駝－整合版專題簡報.pptx)
+
+## 操作
+
+住戶發布需求，兩位代收者各自報價，住戶選定後，得標者取件、完成。完成後雙方各留一次星等與文字評價。
+
+首次開啟公開入口建立獨立示範組。分享示範連結可在別台裝置接續同組案件，按更新資料重新讀取。連結有效 7 天，持有連結的人可切換所有示範角色，請只用虛構地址與聯絡資料。重設影響同組案件、報價與評價，開始新示範則另建一組。
+
+代收者可看已報價篩選、接單統計與行事曆。已確認包括已約定及已取件，事件可點開詳情。完成成交金額表示議定金額，付款由雙方另行協調。
 
 ## 本機開發
 
-需要 Node.js 24。執行 `node scripts/dev.mjs`，開啟終端機印出的網址。資料會寫入 `outputs/local/demo.sqlite`。執行 `node --test test/worker.test.mjs` 驗證保存、角色可見欄位和同時成交的衝突處理。
+需要 Node.js 24，無額外套件。執行 `node scripts/dev.mjs`，開啟印出的本機網址，SQLite 在 `outputs/local/demo.sqlite`，與雲端 D1 分開。
 
-## 部署
+執行 `node --test test/worker.test.mjs`，檢查主流程、保存、同時成交、互評、棄單和可見欄位。執行 `node scripts/build.mjs` 打包。
 
-`node scripts/build.mjs` 產生 Sites Worker。部署使用既有 ChatGPT Site，`.openai/hosting.json` 設定 `DB` 綁定。Sites 部署時套用 `drizzle/` 的 D1 遷移。GitHub 為小組原始碼儲存庫，Sites 發布版本透過其部署流程更新。
+## 部署及相容
 
-## 示範資料
+`.openai/hosting.json` 保留既有 Site 與 DB 綁定。Sites 套用 `drizzle/` 遷移，部署 `dist/server/index.js`，同一 Worker 提供頁面及 API。GitHub 保存小組原始碼與最新文件，公開站透過 Sites 發布流程更新。
 
-首次開啟網址會建立獨立的示範組。選「分享示範連結」把同一組連到第二台裝置。切換身分或按「更新資料」會重新讀取。拿到連結的人可以切換所有示範身分和操作案件。
+整合僅擴充案件 JSON，既有 D1 表與案件可沿用。無評價視為尚未評價，缺事件時間時統計回退原取件日。舊 cancelled 不推定為棄單。瀏覽器 localStorage 及組員 SQLite 資料不會自動匯入。
 
-重設只會影響同一組連結。開始新示範會另建一組案件，原連結可使用至到期。
+## 發表資料
+
+docs 下的整合版簡報、兩張 PNG 和流程 Markdown 為最新交付。outputs 下的六頁及十一頁簡報是歷史草稿。組員提供的兩份原始附件保持原樣作為參考，部署只包含網站執行所需檔案。

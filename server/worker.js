@@ -73,6 +73,10 @@ function jobsFor(jobs, role, now) {
     if (role === "resident") {
       return [{ ...job, offers: job.offers.map(({ contact, ...offer }) => offer) }];
     }
+    if (job.status === "abandoned") {
+      const { address, note, contact, ...record } = job;
+      return [record];
+    }
     return [job];
   });
 }
@@ -154,21 +158,33 @@ function applyAction(jobs, role, { action, jobId, fields, offerId, offerRevision
       const offer = job.offers.find((item) => item.id === offerId && item.revision === offerRevision);
       if (!offer) throw new RequestError("報價已更新或撤回，請重新比較後再確認。", 409);
       job.accepted = offer;
+      job.bookedAt = now;
       job.status = "booked";
       job.offers = [];
       return { jobId };
     }
     case "cancel-confirm":
       if (!(resident && current === "open") && !((resident || assigned) && current === "booked")) break;
-      job.status = "cancelled";
+      job.status = resident ? "cancelled" : "abandoned";
+      if (!resident) job.abandonedAt = now;
       job.issue = "";
       return { jobId };
     case "picked":
     case "done":
       if (!assigned || current !== (action === "picked" ? "booked" : "picked")) break;
       job.status = action;
+      if (action === "done") job.completedAt = now;
       job.issue = "";
       return { jobId };
+    case "review": {
+      if ((!resident && !assigned) || current !== "done" || !job.accepted || job.reviews?.[role]) break;
+      const stars = field(fields, "stars", 1, true);
+      if (!/^[1-5]$/.test(stars)) throw new RequestError("請選擇 1 至 5 顆星。");
+      job.reviews = { ...job.reviews, [role]: {
+        stars: Number(stars), comment: field(fields, "comment", 300), createdAt: now,
+      } };
+      return { jobId };
+    }
     case "issue":
       if (!assigned || !["booked", "picked"].includes(current)) break;
       job.issue = field(fields, "reason", 300, true);

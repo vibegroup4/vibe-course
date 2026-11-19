@@ -221,3 +221,51 @@ dialog::backdrop { background: var(--overlay); }
   .persona-label > [data-icon]:first-child { display: none; }
   .persona-label select { padding-inline-start: 8px; }
 }
+
+/* 組員版的行事曆、統計及互評樣式。 */
+.case-tools { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.statistics { margin-bottom: 20px; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.statistics-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.statistics-head h3 { font-size: 17px; }
+.statistics p { color: var(--muted); font-size: 13px; }
+.statistics-head select { min-height: 44px; padding: 4px 8px; border: 1px solid var(--field-edge); border-radius: 7px; background: var(--surface); color: var(--ink); }
+.statistics-values { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 12px 0 8px; }
+.statistics-values > div { padding: 8px; border-top: 2px solid var(--line); }
+.statistics-values dt { color: var(--muted); font-size: 13px; }
+.statistics-values dd { margin: 0; font-weight: 800; color: var(--olive); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.calendar { margin-bottom: 20px; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.calendar h3 { font-size: 17px; }
+.calendar-filters { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; margin: 12px 0; padding: 0; border: 0; }
+.calendar-filters legend { margin-bottom: 4px; padding: 0; color: var(--muted); font-size: 13px; }
+.calendar-filters label { display: flex; align-items: center; gap: 5px; min-height: 36px; padding: 4px 8px; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer; }
+.calendar-filters input { margin: 0; accent-color: currentColor; }
+.calendar-toolbar, .calendar-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.calendar-toolbar { justify-content: space-between; margin-bottom: 8px; }
+.calendar-toolbar h4 { margin: 0; font-size: 15px; }
+.calendar-controls .button { padding-inline: 8px; font-size: 13px; }
+.calendar-weekdays, .calendar-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.calendar-weekdays { color: var(--muted); text-align: center; font-size: 13px; }
+.calendar-days { gap: 1px; padding: 1px; background: var(--line); }
+.calendar-day { min-height: 54px; min-width: 0; padding: 4px; background: var(--surface); }
+.calendar-padding { background: var(--page); }
+.calendar-day time { display: block; padding-inline: 2px; color: var(--muted); font-size: 12px; }
+.calendar-day [aria-current="date"] { color: var(--olive); font-weight: 850; text-decoration: underline; text-underline-offset: 3px; }
+.calendar-event { display: block; width: 100%; min-height: 44px; margin-top: 4px; padding: 4px; border: 0; border-inline-start: 3px solid currentColor; border-radius: 4px; font-size: 12px; text-align: start; overflow-wrap: anywhere; }
+.calendar-event:hover b { text-decoration: underline; }
+.calendar-event span { display: block; }
+.calendar-confirmed { color: #304b61; background: #e3ebf2; }
+.calendar-done { color: var(--olive); background: var(--sage); }
+.calendar-abandoned { color: var(--red); background: var(--blush); }
+.calendar-empty { margin-top: 8px; color: var(--muted); font-size: 13px; }
+.calendar-date-label { display: none; }
+
+.review-list p { margin: 4px 0 8px; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+.review-stars { color: var(--ochre-ink); white-space: nowrap; }
+@media (max-width: 780px) {
+  .calendar-weekdays, .calendar-padding, .calendar-day:not(.has-events), .calendar-day-number { display: none; }
+  .calendar-days { display: block; padding: 0; background: none; }
+  .calendar-day { min-height: 0; padding: 8px 0; border-top: 1px solid var(--line); }
+  .calendar-date-label { display: inline; }
+  .calendar-event { padding-inline: 8px; }
+}
+.status.abandoned { background: var(--blush); color: var(--red); }

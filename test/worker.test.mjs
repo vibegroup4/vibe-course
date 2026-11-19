@@ -84,3 +84,61 @@ test("shared demo persists, hides handoff details, and accepts exactly one concu
     await rm(directory, { recursive: true });
   }
 });
+
+test("completed cases allow one persisted review per party", async () => {
+  const db = openDemoDatabase();
+  try {
+    const demo = await client(db)({ action: "create" });
+    const use = client(db, demo.id);
+    const jobId = "sample-3";
+    assert.equal((await use({ action: "review", revision: 0, jobId, fields: { stars: "5" } }, "lin")).status, 403);
+    assert.equal((await use({ action: "review", revision: 0, jobId: "sample-2", fields: { stars: "5" } })).status, 409);
+    for (const stars of ["0", "6", "x", "1.5"]) {
+      assert.equal((await use({ action: "review", revision: 0, jobId, fields: { stars } })).status, 400);
+    }
+    assert.equal((await use({ action: "review", revision: 0, jobId, fields: { stars: "5", comment: "x".repeat(301) } })).status, 400);
+    const resident = await use({ action: "review", revision: 0, jobId, fields: { stars: "5", comment: "示範準時" } });
+    assert.equal(resident.status, 200);
+    assert.equal((await use({ action: "review", revision: 1, jobId, fields: { stars: "4" } })).status, 409);
+    const collector = await use({ action: "review", revision: 1, jobId, fields: { stars: "4", comment: "示範交接清楚" } }, "chen");
+    assert.equal(collector.status, 200);
+    const reloaded = await use();
+    const reviews = reloaded.jobs.find((job) => job.id === jobId).reviews;
+    assert.equal(reviews.resident.stars, 5);
+    assert.equal(reviews.chen.stars, 4);
+    assert.equal(reviews.resident.comment, "示範準時");
+    assert.ok(Number.isFinite(reviews.chen.createdAt));
+    assert.equal((await use({ action: "review", revision: 2, jobId, fields: { stars: "3" } }, "chen")).status, 409);
+  } finally {
+    db.close();
+  }
+});
+
+test("abandonment keeps the booking record and removes resident handoff fields", async () => {
+  const db = openDemoDatabase();
+  try {
+    const demo = await client(db)({ action: "create" });
+    const use = client(db, demo.id);
+    const jobId = "sample-2";
+    const old = (await use()).jobs.find((job) => job.id === jobId);
+    assert.equal(old.bookedAt, undefined);
+    const abandoned = await use({ action: "cancel-confirm", revision: 0, jobId }, "lin");
+    const record = abandoned.jobs.find((job) => job.id === jobId);
+    assert.equal(abandoned.status, 200);
+    assert.equal(record.status, "abandoned");
+    assert.equal(record.accepted.amount, 70);
+    assert.ok(Number.isFinite(record.abandonedAt));
+    for (const name of ["address", "note", "contact"]) assert.equal(Object.hasOwn(record, name), false);
+    const readBack = (await use(null, "lin")).jobs.find((job) => job.id === jobId);
+    assert.deepEqual(readBack, record);
+    assert.equal((await use()).jobs.find((job) => job.id === jobId).address, old.address);
+    for (const action of ["picked", "done", "cancel-confirm", "issue", "review"]) {
+      assert.equal((await use({ action, revision: 1, jobId, fields: { reason: "test", stars: "5" } }, "lin")).status, 409);
+    }
+    assert.equal((await use(null, "chen")).jobs.some((job) => job.id === jobId), false);
+    const cancelled = await use({ action: "cancel-confirm", revision: 1, jobId: "sample-1" });
+    assert.equal(cancelled.jobs.find((job) => job.id === "sample-1").status, "cancelled");
+  } finally {
+    db.close();
+  }
+});
