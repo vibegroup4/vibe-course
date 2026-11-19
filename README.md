@@ -6,6 +6,7 @@
 - [小組 GitHub](https://github.com/vibegroup4/vibe-course)
 - [規格與完成條件](spec.md)
 - [操作及系統流程](docs/流程圖.md)
+- [程式流程圖與函式對照](docs/程式流程圖.md)
 - [驗收與彩排](docs/驗收與彩排.md)
 - [組員整合紀錄](docs/組員整合紀錄.md)
 - [最新整合版專題簡報](docs/垃圾駱駝－整合版專題簡報.pptx)
